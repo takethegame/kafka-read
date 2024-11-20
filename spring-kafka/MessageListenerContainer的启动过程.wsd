@@ -1,0 +1,72 @@
+@startuml
+participant ConcurrentMessageListenerContainer
+participant KafkaMessageListenerContainer
+participant ListenerConsumer
+
+ConcurrentMessageListenerContainer -> ConcurrentMessageListenerContainer : doStart
+
+ConcurrentMessageListenerContainer -> ConcurrentMessageListenerContainer : 校验topics（里面会调用AdminClient去校验）
+ConcurrentMessageListenerContainer -> ConcurrentMessageListenerContainer : 获取topicpartition、containerProperties
+
+ConcurrentMessageListenerContainer -> ConcurrentMessageListenerContainer : 设置running标志位
+
+loop 循环concurrency次数
+    ConcurrentMessageListenerContainer->KafkaMessageListenerContainer : 创建KafkaMessageListenerContainer实例
+    ConcurrentMessageListenerContainer->ConcurrentMessageListenerContainer : 配置 ConcurrentMessageListenerContainer 实例属性
+    ConcurrentMessageListenerContainer-> KafkaMessageListenerContainer : 启动
+    KafkaMessageListenerContainer -> KafkaMessageListenerContainer : 校验ack模式
+    KafkaMessageListenerContainer -> KafkaMessageListenerContainer : 创建consumer任务执行器
+    KafkaMessageListenerContainer -> KafkaMessageListenerContainer : 计算listener的类型（ListenerType）
+    KafkaMessageListenerContainer -> ListenerConsumer : 创建ListenerConsumer
+    activate ListenerConsumer
+    ListenerConsumer-> ListenerConsumer: 校验groupInstance（group.instance.id配置）
+    ListenerConsumer -> ListenerConsumer: 依据properties计算autocommit值
+    ListenerConsumer -> DefaultKafkaConsumerFactory:  创建 Consumer
+    activate DefaultKafkaConsumerFactory
+        alt 是否需要调整参数
+            DefaultKafkaConsumerFactory -> DefaultKafkaConsumerFactory : 调整groupId、clientId参数    
+        end
+        DefaultKafkaConsumerFactory -> DefaultKafkaConsumerFactory : 创建原始KafkaConsumer(kafka-client)
+        alt listeners中元素的个数大于1
+            DefaultKafkaConsumerFactory -> DefaultKafkaConsumerFactory : 为原始KafkaConsumer创建代理
+            DefaultKafkaConsumerFactory -> DefaultKafkaConsumerFactory :将KafkaConsumer设置到listener中
+        end
+        DefaultKafkaConsumerFactory -> DefaultKafkaConsumerFactory : 处理postProcessors步骤
+        note right : 此处是为了扩展出来给使用方处理\n原始KafkaConsumer用的，可以注\n入自己的后处理步骤逻辑
+        DefaultKafkaConsumerFactory -> ListenerConsumer : 返回创建好的Consumer实例
+    deactivate DefaultKafkaConsumerFactory
+    
+    ListenerConsumer -> ListenerConsumer : 从Consumer中获取并计算clientId
+    ListenerConsumer -> ListenerConsumer : 处理事务模板
+    ListenerConsumer -> ListenerConsumer : 设置genericListener属性，消费者的消息处理逻辑实体
+    ListenerConsumer -> ListenerConsumer : 计算commitCurrentOnAssignment属性
+    alt 批量消费Listener
+        ListenerConsumer -> ListenerConsumer : 设置批量消费属性
+    else
+        ListenerConsumer -> ListenerConsumer : 设置单个消费属性
+    end
+
+    ListenerConsumer -> ListenerConsumer : 设置listenerType
+    ListenerConsumer -> ListenerConsumer : 计算isConsumerAwareListener
+    ListenerConsumer -> ListenerConsumer : 获取ErrorHandler
+    ListenerConsumer -> ListenerConsumer : 初始化taskScheduler，用于执行定时任务
+    ListenerConsumer -> ListenerConsumer : 初始化monitorTask，监控定时任务
+    ListenerConsumer -> ListenerConsumer : 计算checkNullKeyForExceptions、checkNullValueForExceptions
+    ListenerConsumer -> ListenerConsumer : 计算syncCommitTimeout
+    ListenerConsumer -> ListenerConsumer : 计算maxPollInterval（max.poll.interval.ms）
+    ListenerConsumer -> ListenerConsumer : 处理监控micrometerHolder
+    ListenerConsumer -> ListenerConsumer : 处理deliveryAttemptAware
+    ListenerConsumer -> ListenerConsumer : 处理subBatchPerPartition
+    ListenerConsumer -> KafkaMessageListenerContainer :返回ListenerConsumer实例
+    deactivate ListenerConsumer
+    KafkaMessageListenerContainer -> KafkaMessageListenerContainer : 设置running标志位
+    KafkaMessageListenerContainer -> SimpleAsyncTaskExecutor : 向执行器提交ListenerConsumer实例，并执行
+    activate SimpleAsyncTaskExecutor
+    SimpleAsyncTaskExecutor -> ListenerConsumer : 执行run方法
+    deactivate SimpleAsyncTaskExecutor
+    KafkaMessageListenerContainer -> KafkaMessageListenerContainer : 当前线程等待一定的时间并结束初始化过程
+KafkaMessageListenerContainer -> ConcurrentMessageListenerContainer : 启动结束
+ConcurrentMessageListenerContainer ->ConcurrentMessageListenerContainer : 将当前container实例加入到自己的list中
+end
+@enduml
+

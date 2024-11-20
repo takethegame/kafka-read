@@ -1,0 +1,37 @@
+@startuml
+
+participant BeanPostProcessor
+participant KafkaListenerAnnotationBeanPostProcessor
+BeanPostProcessor -> KafkaListenerAnnotationBeanPostProcessor : postProcessAfterInitialization
+
+activate KafkaListenerAnnotationBeanPostProcessor
+KafkaListenerAnnotationBeanPostProcessor -> KafkaListenerAnnotationBeanPostProcessor : 获取bean中方法级别的KafkaListener注解
+
+    alt 方法级别的注解为空 
+        KafkaListenerAnnotationBeanPostProcessor-> KafkaListenerAnnotationBeanPostProcessor : 打印日志
+    else 
+        loop 所有的带KafkaListener的方法
+            loop 方法上的KafkaListener注解
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 处理方法代理，获取被代理的方法
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 创建MethodKafkaListenerEndpoint
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 注册listenerScope
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 获取KafkaListener注解上的topic列表
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 获取KafkaListener注解上\n的TopicPartitionOffset 
+                note right : TopicPartitionOffset为\ntopic，分区，分区的\noffset配置信息
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 获取
+                alt 处理RetryTopic 成功 （此处省略）
+                    
+                else 处理普通的topic
+                    KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 将bean、KafkaListener上的信息\n经过提取、转换后填充到\nMethodKafkaListenerEndpoint中\n(processKafkaListenerAnnotation)
+                    KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 获取KafkaListenerContainerFactory \n（通过KafkaListener上的配置中Spring中获取bean）
+                    KafkaListenerAnnotationBeanPostProcessor->KafkaListenerEndpointRegistrar : 注册MethodKafkaListenerEndpoint
+                end
+
+                KafkaListenerAnnotationBeanPostProcessor->KafkaListenerAnnotationBeanPostProcessor : 注销listenerScope
+            end
+        end
+    end
+deactivate KafkaListenerAnnotationBeanPostProcessor
+
+@enduml
+

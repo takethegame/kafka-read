@@ -1,0 +1,50 @@
+@startuml
+
+
+
+participant KafkaListenerAnnotationBeanPostProcessor
+participant KafkaListenerEndpointRegistrar
+participant KafkaListenerEndpointRegistry
+participant KafkaListenerContainerFactory
+KafkaListenerAnnotationBeanPostProcessor -> KafkaListenerEndpointRegistrar : 注册EndPoint registerEndpoint
+
+KafkaListenerEndpointRegistrar -> KafkaListenerEndpointRegistry : 注册ListenerContainer registerListenerContainer
+
+KafkaListenerEndpointRegistry -> KafkaListenerContainerFactory : 创建ListenerContainer
+activate KafkaListenerContainerFactory #FFBBBB
+    alt topicPartition 配置不为空
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 用topicPartition创建 ContainerProperties
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 获取ConsumerFactory
+        note right : 通常我们在kafka配置的时候，\n自己创建并塞入ContainerFactory的属性
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 创建ConcurrentMessageListenerContainer实例
+    else topics 不为空
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 用topics创建 ContainerProperties
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 获取ConsumerFactory
+        note right : 通常我们在kafka配置的时候，\n自己创建并塞入ContainerFactory的属性
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 创建ConcurrentMessageListenerContainer实例
+    else 处理topicPattern模式
+    KafkaListenerContainerFactory->KafkaListenerContainerFactory : 用topicPattern创建 ContainerProperties
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 获取ConsumerFactory
+        note right : 通常我们在kafka配置的时候，\n自己创建并塞入ContainerFactory的属性
+        KafkaListenerContainerFactory->KafkaListenerContainerFactory : 创建ConcurrentMessageListenerContainer实例
+    end
+    KafkaListenerContainerFactory -> KafkaListenerContainerFactory : 将endpoint的id设置为当前Container的beanName
+    alt endpoint是继承自AbstractKafkaListenerEndpoint
+    KafkaListenerContainerFactory -> KafkaListenerContainerFactory : 将container的部分属性设置到endpoint中，如：batchListener，ackDiscarded等
+    end 
+
+    activate KafkaListenerContainerFactory #AAAAAA
+    KafkaListenerContainerFactory -> KafkaListenerContainerFactory : 初始化container
+    KafkaListenerContainerFactory -> ConcurrentMessageListenerContainer : 填充container的属性值。
+    KafkaListenerContainerFactory -> KafkaListenerContainerFactory : 设置个性化参数
+    KafkaListenerContainerFactory -> KafkaListenerEndpointRegistry : 返回container实例
+    deactivate
+deactivate KafkaListenerContainerFactory
+KafkaListenerEndpointRegistry -> KafkaListenerEndpointRegistry : 处理Container实例的启动时机
+KafkaListenerEndpointRegistry -> KafkaListenerEndpointRegistry : 将Container实例放入listenerContainers缓存中
+KafkaListenerEndpointRegistry -> KafkaListenerEndpointRegistry : 处理endpoint的group，获取ContainerGroup的bean，并将container塞入ContainerGroup中。
+alt 处理自动启动的Container
+    KafkaListenerEndpointRegistry-> ConcurrentMessageListenerContainer : 启动
+end
+@enduml
+
